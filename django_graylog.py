@@ -10,7 +10,7 @@ from ua_parser import user_agent_parser
 from django.conf import settings
 from django.core.exceptions import MiddlewareNotUsed
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __version_info__ = tuple(int(num) for num in __version__.split("."))
 
 
@@ -57,7 +57,7 @@ def get_ip(request):
 class GraylogProxy:
     def __init__(self):
         self.logs = []
-        self.extra = {}
+        self.extra = getattr(settings, "GRAYLOG_FIELDS", {})
 
     def __setitem__(self, name, value):
         if name.startswith("_"):
@@ -114,7 +114,7 @@ class GraylogMiddleware:
 
     def send(self, record):
         if self.endpoint:
-            requests.post(self.endpoint, json=record, timeout=0.25)
+            requests.post(self.endpoint, json=record, timeout=getattr(settings, "GRAYLOG_TIMEOUT", 0.25))
 
     def parse_agent(self, agent):
         if not agent:
@@ -150,6 +150,7 @@ class GraylogMiddleware:
             # "full_message": "Backtrace here\n\nmore stuff",
             # "timestamp": time.time(),
             "level": getattr(settings, "GRAYLOG_LEVEL", Severity.INFO),
+            "_facility": "django-graylog",
             "_node": getattr(settings, "GRAYLOG_NODE", socket.gethostname()),
             "_status": response.status_code,
             "_method": request.method,
