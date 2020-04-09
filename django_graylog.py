@@ -10,7 +10,7 @@ from ua_parser import user_agent_parser
 from django.conf import settings
 from django.core.exceptions import MiddlewareNotUsed
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 __version_info__ = tuple(int(num) for num in __version__.split("."))
 
 
@@ -47,6 +47,8 @@ GELF_RESERVED_FIELDS = set(
 
 def get_ip(request):
     ip_address = request.META.get("HTTP_X_FORWARDED_FOR", "").strip()
+    if ip_address:
+        ip_address = ip_address.split(",")[0].strip()
     if not ip_address:
         ip_address = request.META.get("REMOTE_ADDR", "127.0.0.1").strip()
     if not IP_REGEX.match(ip_address):
