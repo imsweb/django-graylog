@@ -1,16 +1,20 @@
 import enum
+import gzip
+import json
+import os
 import re
 import socket
+import struct
 import time
 import urllib.parse
 
 import requests
-from ua_parser import user_agent_parser
 
 from django.conf import settings
 from django.core.exceptions import MiddlewareNotUsed
+from ua_parser import user_agent_parser
 
-__version__ = "0.2.1"
+__version__ = "0.3.0"
 __version_info__ = tuple(int(num) for num in __version__.split("."))
 
 
@@ -94,11 +98,59 @@ class GraylogProxy:
         return fields
 
 
+class RequestsTransport:
+    def __init__(self, endpoint):
+        self.endpoint = endpoint
+        self.timeout = getattr(settings, "GRAYLOG_TIMEOUT", 0.25)
+        self.session = requests.Session()
+        self.session.headers["content-type"] = "application/json"
+        self.session.headers["content-encoding"] = "gzip"
+
+    def send(self, record):
+        compressed = gzip.compress(json.dumps(record).encode("utf-8"))
+        try:
+            self.session.post(self.endpoint, data=compressed, timeout=self.timeout)
+        except requests.exceptions.RequestException:
+            pass  # What to do here?
+
+
+class UDPTransport:
+    def __init__(self, endpoint):
+        parts = urllib.parse.urlparse(endpoint)
+        self.address = (parts.hostname, parts.port)
+        self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.mtu = getattr(settings, "GRAYLOG_MTU", 1024)
+
+    def chunked(self, data):
+        message_id = os.urandom(8)
+        chunk_size = self.mtu - 12
+        chunks = [data[pos : pos + chunk_size] for pos in range(0, len(data), chunk_size)]
+        chunk_count = len(chunks)
+        for chunk_index, chunk in enumerate(chunks):
+            yield b"".join((b"\x1e\x0f", message_id, struct.pack("!BB", chunk_index, chunk_count), chunk))
+
+    def send(self, record):
+        compressed = gzip.compress(json.dumps(record).encode("utf-8"))
+        if len(compressed) > self.mtu:
+            for chunk in self.chunked(compressed):
+                self.socket.sendto(chunk, self.address)
+        else:
+            self.socket.sendto(compressed, self.address)
+
+
 class GraylogMiddleware:
+    scheme_transports = {
+        "http": RequestsTransport,
+        "https": RequestsTransport,
+        "udp": UDPTransport,
+    }
+
     def __init__(self, get_response):
         self.endpoint = getattr(settings, "GRAYLOG_ENDPOINT", "")
         if not self.endpoint:
             raise MiddlewareNotUsed()
+        scheme = urllib.parse.urlparse(self.endpoint).scheme
+        self.transport = self.scheme_transports[scheme](self.endpoint)
         self.get_response = get_response
 
     def __call__(self, request):
@@ -108,15 +160,11 @@ class GraylogMiddleware:
         elapsed = time.time() - start
         record = self.make_record(request, response, elapsed)
         if self.filter(record):
-            self.send(record)
+            self.transport.send(record)
         return response
 
     def filter(self, record):
         return not record["_path"].startswith("/_")
-
-    def send(self, record):
-        if self.endpoint:
-            requests.post(self.endpoint, json=record, timeout=getattr(settings, "GRAYLOG_TIMEOUT", 0.25))
 
     def parse_agent(self, agent):
         if not agent:
