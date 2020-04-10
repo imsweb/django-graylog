@@ -63,7 +63,7 @@ def get_ip(request):
 class GraylogProxy:
     def __init__(self):
         self.logs = []
-        self.extra = getattr(settings, "GRAYLOG_FIELDS", {})
+        self.extra = getattr(settings, "GRAYLOG_FIELDS", {}).copy()
 
     def __setitem__(self, name, value):
         if name.startswith("_"):

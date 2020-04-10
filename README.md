@@ -17,7 +17,8 @@ Simply add `django_graylog.GraylogMiddleware` to your `MIDDLEWARE` setting, afte
 
 ### Settings
 
-* `GRAYLOG_ENDPOINT` - An HTTP/HTTPS endpoint to send GELF logs to. For example, `http://yourserver:12201/gelf`.
+* `GRAYLOG_ENDPOINT` - An HTTP/HTTPS/UDP endpoint to send GELF logs to. For example, `http://yourserver:12201/gelf` or
+  `udp://yourserver:12201`.
 * `GRAYLOG_NODE` - The middleware sends a `_node` field that defaults to `socket.gethostname`. Set this to override it.
 * `GRAYLOG_LEVEL` - The default `level` to send for log entries. Defaults to 6 (INFO).
 * `GRAYLOG_TIMEOUT` - Timeout for sending log entries to Graylog. Defaults to `0.25` seconds.
