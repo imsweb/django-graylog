@@ -37,7 +37,7 @@ unless `GRAYLOG_ENDPOINT` is set (see below).
 * `GRAYLOG_HEADERS` - `True` to include all HTTP request headers (except sensitive
   headers like `Authorization` and `Cookie` - see below), otherwise a list of headers to
   be included. Defaults to `[]`.
-* `GRAYLOG_EXCLUDE_HEADERS` - A list of headers to exlude when `GRAYLOG_HEADERS` is
+* `GRAYLOG_EXCLUDE_HEADERS` - A list of headers to exclude when `GRAYLOG_HEADERS` is
   `True`. Defaults to `["authorization", "cookie", "proxy-authorization"]`.
 * `GRAYLOG_USER_AGENT` - `True` to parse out User-Agent header into separate fields
   using [ua_parser](https://github.com/ua-parser/uap-python) (default is `False`).
