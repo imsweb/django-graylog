@@ -8,13 +8,24 @@ import struct
 import time
 import urllib.parse
 
-import requests
-
 from django.conf import settings
-from django.core.exceptions import MiddlewareNotUsed
-from ua_parser import user_agent_parser
+from django.core.exceptions import ImproperlyConfigured, MiddlewareNotUsed
 
-__version__ = "0.3.0"
+try:
+    import requests
+
+    has_requests = True
+except ImportError:
+    has_requests = False
+
+try:
+    from ua_parser import user_agent_parser
+
+    has_ua_parser = True
+except ImportError:
+    has_ua_parser = False
+
+__version__ = "0.4.0"
 __version_info__ = tuple(int(num) for num in __version__.split("."))
 
 
@@ -48,6 +59,14 @@ GELF_RESERVED_FIELDS = set(
     ]
 )
 
+SENSITIVE_HEADERS = set(
+    [
+        "authorization",
+        "cookie",
+        "proxy-authorization",
+    ]
+)
+
 
 def get_ip(request):
     ip_address = request.META.get("HTTP_X_FORWARDED_FOR", "").strip()
@@ -67,9 +86,14 @@ class GraylogProxy:
 
     def __setitem__(self, name, value):
         if name.startswith("_"):
-            raise KeyError("Invalid key ({}). Keys will automatically be prefixed with an underscore.".format(name))
+            raise KeyError(
+                "Invalid key ({}). Keys will automatically be prefixed with an "
+                "underscore.".format(name)
+            )
         if not GELF_FIELD_REGEX.match(name):
-            raise KeyError("Invalid key ({}). Keys must match [\\w\\.\\-]+.".format(name))
+            raise KeyError(
+                "Invalid key ({}). Keys must match [\\w\\.\\-]+.".format(name)
+            )
         if name in GELF_RESERVED_FIELDS:
             raise KeyError("Invalid key ({}). This key name is reserved.".format(name))
         self.extra[name] = value
@@ -124,10 +148,19 @@ class UDPTransport:
     def chunked(self, data):
         message_id = os.urandom(8)
         chunk_size = self.mtu - 12
-        chunks = [data[pos : pos + chunk_size] for pos in range(0, len(data), chunk_size)]
+        chunks = [
+            data[pos : pos + chunk_size] for pos in range(0, len(data), chunk_size)
+        ]
         chunk_count = len(chunks)
         for chunk_index, chunk in enumerate(chunks):
-            yield b"".join((b"\x1e\x0f", message_id, struct.pack("!BB", chunk_index, chunk_count), chunk))
+            yield b"".join(
+                (
+                    b"\x1e\x0f",
+                    message_id,
+                    struct.pack("!BB", chunk_index, chunk_count),
+                    chunk,
+                )
+            )
 
     def send(self, record):
         compressed = gzip.compress(json.dumps(record).encode("utf-8"))
@@ -149,7 +182,15 @@ class GraylogMiddleware:
         self.endpoint = getattr(settings, "GRAYLOG_ENDPOINT", "")
         if not self.endpoint:
             raise MiddlewareNotUsed()
+        if getattr(settings, "GRAYLOG_USER_AGENT", False) and not has_ua_parser:
+            raise ImproperlyConfigured(
+                "The `ua_parser` library is required when GRAYLOG_USER_AGENT is True."
+            )
         scheme = urllib.parse.urlparse(self.endpoint).scheme
+        if scheme.startswith("http") and not has_requests:
+            raise ImproperlyConfigured(
+                "The `requests` library is required to use HTTP[S] endpoints."
+            )
         self.transport = self.scheme_transports[scheme](self.endpoint)
         self.get_response = get_response
 
@@ -158,9 +199,13 @@ class GraylogMiddleware:
         setattr(request, "graylog", GraylogProxy())
         response = self.get_response(request)
         elapsed = time.time() - start
-        record = self.make_record(request, response, elapsed)
-        if self.filter(record):
-            self.transport.send(record)
+        try:
+            record = self.make_record(request, response, elapsed)
+            if self.filter(record):
+                self.transport.send(record)
+        except Exception:
+            if getattr(settings, "DEBUG", False):
+                raise
         return response
 
     def filter(self, record):
@@ -192,6 +237,23 @@ class GraylogMiddleware:
         except ValueError:
             return {}
 
+    def request_headers(self, request):
+        headers = {}
+        include_headers = getattr(settings, "GRAYLOG_HEADERS", [])
+        exclude_headers = set(
+            name.lower()
+            for name in getattr(settings, "GRAYLOG_EXCLUDE_HEADERS", SENSITIVE_HEADERS)
+        )
+        if include_headers is True:
+            include_headers = list(sorted(request.headers.keys()))
+        for name in include_headers:
+            if name.lower() in exclude_headers:
+                continue
+            value = request.headers.get(name)
+            if value is not None:
+                headers[name] = value
+        return {"_headers": headers}
+
     def make_record(self, request, response, elapsed):
         record = {
             "version": "1.1",
@@ -205,14 +267,22 @@ class GraylogMiddleware:
             "_status": response.status_code,
             "_method": request.method,
             "_ip": get_ip(request),
-            "_elapsed": str(elapsed),
-            "_elapsed_ms": round(elapsed * 1000),
             "_path": request.path,
-            "_headers": {key: value for key, value in request.headers.items() if key.lower() != "cookie"},
         }
+        if getattr(settings, "GRAYLOG_TIMING", True):
+            record.update(
+                {
+                    "_elapsed": str(elapsed),
+                    "_elapsed_ms": round(elapsed * 1000),
+                }
+            )
+        if getattr(settings, "GRAYLOG_HEADERS", False):
+            record.update(self.request_headers(request))
+        if getattr(settings, "GRAYLOG_USER_AGENT", False) and has_ua_parser:
+            record.update(self.parse_agent(request.headers.get("user-agent")))
+        if getattr(settings, "GRAYLOG_REFERER", False):
+            record.update(self.parse_referer(request.headers.get("referer")))
         graylog = getattr(request, "graylog", None)
         if graylog:
             record.update(graylog.additional_fields())
-        record.update(self.parse_agent(request.headers.get("user-agent")))
-        record.update(self.parse_referer(request.headers.get("referer")))
         return record

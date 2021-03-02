@@ -19,12 +19,18 @@ setup(
     url="https://github.com/imsweb/django-graylog",
     license="MIT",
     py_modules=["django_graylog"],
-    install_requires=["requests", "ua-parser"],
+    extras_require={
+        "http": ["requests"],
+        "ua": ["ua-parser"],
+        "all": ["requests", "ua-parser"],
+    },
     classifiers=[
-        "Development Status :: 3 - Alpha",
+        "Development Status :: 4 - Beta",
         "Intended Audience :: Developers",
         "License :: OSI Approved :: MIT License",
         "Programming Language :: Python",
         "Programming Language :: Python :: 3",
+        "Topic :: System :: Logging",
+        "Topic :: System :: Monitoring",
     ],
 )
