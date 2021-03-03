@@ -25,8 +25,11 @@ unless `GRAYLOG_ENDPOINT` is set (see below).
 
 ### Settings
 
-* `GRAYLOG_ENDPOINT` - An HTTP/HTTPS/UDP endpoint to send GELF logs to. For example,
-  `http://yourserver:12201/gelf` or `udp://yourserver:12201`.
+* `GRAYLOG_ENDPOINT` - An HTTP, HTTPS, UDP, or TCP endpoint to send GELF logs to. For
+  example:
+    - `http://yourserver:12201/gelf`
+    - `udp://yourserver:12201`
+    - `tcp://yourserver:12201`
 * `GRAYLOG_NODE` - The middleware sends a `_node` field that defaults to
   `socket.gethostname`. Set this to override it.
 * `GRAYLOG_LEVEL` - The default `level` to send for log entries. Defaults to 6 (INFO).
@@ -45,6 +48,14 @@ unless `GRAYLOG_ENDPOINT` is set (see below).
   separate field.
 * `GRAYLOG_TIMING` - `True` to include request timing information (the default), `False`
   to disable.
+* `GRAYLOG_FILTERS` - A dictionary of filters to exclude records from being logged. Each
+  key is a field name, and each value is a list of regegular expressions to exclude. For
+  example:
+    - `{"host": [r"media.example.com"]}` - Skips logging of requests to the
+      `media.example.com` domain.
+    - `{"path": [r"^/_"]}` - Skips logging of requests to paths starting with `_`.
+    - `{"ip": "192\.168\."}` - Skips logging of requests from `192.168.*` addresses.
+      Using a string instead of a list works for a single regular expression.
 
 
 ## Advanced Usage

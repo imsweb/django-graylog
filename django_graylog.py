@@ -5,7 +5,9 @@ import os
 import re
 import socket
 import struct
+import textwrap
 import time
+import traceback
 import urllib.parse
 
 from django.conf import settings
@@ -25,7 +27,7 @@ try:
 except ImportError:
     has_ua_parser = False
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 __version_info__ = tuple(int(num) for num in __version__.split("."))
 
 
@@ -171,15 +173,51 @@ class UDPTransport:
             self.socket.sendto(compressed, self.address)
 
 
+class TCPTransport:
+    def __init__(self, endpoint):
+        parts = urllib.parse.urlparse(endpoint)
+        self.address = (parts.hostname, parts.port)
+        self.timeout = getattr(settings, "GRAYLOG_TIMEOUT", 0.25)
+        self.delim = getattr(settings, "GRAYLOG_TCP_DELIMITER", b"\x00")
+
+    def send(self, record):
+        # Graylog over TCP does not support compression.
+        payload = json.dumps(record).encode("utf-8")
+        # TODO: have an option to keep a socket open and reconnect as needed?
+        with socket.create_connection(self.address, timeout=self.timeout) as sock:
+            sock.sendall(payload)
+
+
+def compile_filters(filters):
+    compiled = {}
+    for name, regexes in filters.items():
+        if name not in ("version", "host", "short_message", "level"):
+            name = "_" + name.lstrip("_")
+        if isinstance(regexes, str):
+            regexes = [regexes]
+        patterns = []
+        for regex in regexes:
+            if isinstance(regex, re.Pattern):
+                patterns.append(regex)
+            elif isinstance(regex, str):
+                patterns.append(re.compile(regex))
+            elif isinstance(regex, (list, tuple)) and len(regex) == 2:
+                patterns.append(re.compile(*regex))
+        compiled[name] = patterns
+    return compiled
+
+
 class GraylogMiddleware:
     scheme_transports = {
         "http": RequestsTransport,
         "https": RequestsTransport,
         "udp": UDPTransport,
+        "tcp": TCPTransport,
     }
 
     def __init__(self, get_response):
         self.endpoint = getattr(settings, "GRAYLOG_ENDPOINT", "")
+        self.filters = compile_filters(getattr(settings, "GRAYLOG_FILTERS", {}))
         if not self.endpoint:
             raise MiddlewareNotUsed()
         if getattr(settings, "GRAYLOG_USER_AGENT", False) and not has_ua_parser:
@@ -208,8 +246,19 @@ class GraylogMiddleware:
                 raise
         return response
 
+    def process_exception(self, request, exception):
+        tb = "".join(traceback.format_tb(exception.__traceback__))
+        setattr(request, "_graylog_traceback", textwrap.dedent(tb))
+
     def filter(self, record):
-        return not record["_path"].startswith("/_")
+        for field_name, regexes in self.filters.items():
+            if field_name not in record:
+                continue
+            value = str(record[field_name])
+            for regex in regexes:
+                if regex.match(value):
+                    return False
+        return True
 
     def parse_agent(self, agent):
         if not agent:
@@ -259,7 +308,6 @@ class GraylogMiddleware:
             "version": "1.1",
             "host": request.get_host(),
             "short_message": request.get_full_path(),
-            # "full_message": "Backtrace here\n\nmore stuff",
             # "timestamp": time.time(),
             "level": getattr(settings, "GRAYLOG_LEVEL", Severity.INFO),
             "_facility": "django-graylog",
@@ -269,6 +317,8 @@ class GraylogMiddleware:
             "_ip": get_ip(request),
             "_path": request.path,
         }
+        if hasattr(request, "_graylog_traceback"):
+            record["full_message"] = request._graylog_traceback
         if getattr(settings, "GRAYLOG_TIMING", True):
             record.update(
                 {
