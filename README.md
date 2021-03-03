@@ -46,6 +46,8 @@ unless `GRAYLOG_ENDPOINT` is set (see below).
   using [ua_parser](https://github.com/ua-parser/uap-python) (default is `False`).
 * `GRAYLOG_REFERER` - `True` to parse out the referer domain (default is `False`) into a
   separate field.
+* `GRAYLOG_USERNAME` - `True` to include `request.user.get_username()` (default is
+  `False`).
 * `GRAYLOG_TIMING` - `True` to include request timing information (the default), `False`
   to disable.
 * `GRAYLOG_FILTERS` - A dictionary of filters to exclude records from being logged. Each

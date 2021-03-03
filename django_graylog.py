@@ -27,7 +27,7 @@ try:
 except ImportError:
     has_ua_parser = False
 
-__version__ = "0.5.0"
+__version__ = "0.6.0"
 __version_info__ = tuple(int(num) for num in __version__.split("."))
 
 
@@ -127,7 +127,7 @@ class GraylogProxy:
 class RequestsTransport:
     def __init__(self, endpoint):
         self.endpoint = endpoint
-        self.timeout = getattr(settings, "GRAYLOG_TIMEOUT", 0.25)
+        self.timeout = float(getattr(settings, "GRAYLOG_TIMEOUT", 0.25))
         self.session = requests.Session()
         self.session.headers["content-type"] = "application/json"
         self.session.headers["content-encoding"] = "gzip"
@@ -177,7 +177,7 @@ class TCPTransport:
     def __init__(self, endpoint):
         parts = urllib.parse.urlparse(endpoint)
         self.address = (parts.hostname, parts.port)
-        self.timeout = getattr(settings, "GRAYLOG_TIMEOUT", 0.25)
+        self.timeout = float(getattr(settings, "GRAYLOG_TIMEOUT", 0.25))
         self.delim = getattr(settings, "GRAYLOG_TCP_DELIMITER", b"\x00")
 
     def send(self, record):
@@ -264,25 +264,33 @@ class GraylogMiddleware:
         if not agent:
             return {}
         ua = user_agent_parser.Parse(agent)
-        if ua["device"]["family"] == "Spider" or (
+        is_spider = ua["device"]["family"] == "Spider"
+        is_unknown = (
             (ua["user_agent"]["family"] == "Other")
             and (ua["os"]["family"] == "Other")
             and (ua["device"]["family"] == "Other")
-        ):
-            return {}
-        return {
-            "_browser": ua["user_agent"]["family"],
-            "_browser_version": ua["user_agent"]["major"],
-            "_os": ua["os"]["family"],
-            "_os_version": ua["os"]["major"],
-        }
+        )
+        fields = {"_agent": agent}
+        if not is_spider and not is_unknown:
+            fields.update(
+                {
+                    "_browser": ua["user_agent"]["family"],
+                    "_browser_version": ua["user_agent"]["major"],
+                    "_os": ua["os"]["family"],
+                    "_os_version": ua["os"]["major"],
+                }
+            )
+        return fields
 
     def parse_referer(self, referer):
         if not referer:
             return {}
         try:
+            fields = {"_referer": referer}
             domain = urllib.parse.urlparse(referer).netloc
-            return {"_referer": domain} if domain else {}
+            if domain:
+                fields["_referer_domain"] = domain
+            return fields
         except ValueError:
             return {}
 
@@ -294,7 +302,14 @@ class GraylogMiddleware:
             for name in getattr(settings, "GRAYLOG_EXCLUDE_HEADERS", SENSITIVE_HEADERS)
         )
         if include_headers is True:
-            include_headers = list(sorted(request.headers.keys()))
+            # User-Agent and Referer are not included by default, since they will either
+            # be in separate fields if requested via settings, or can be explicitly
+            # requested in GRAYLOG_HEADERS otherwise.
+            include_headers = [
+                name
+                for name in sorted(request.headers.keys())
+                if name.lower() not in ("user-agent", "referer")
+            ]
         for name in include_headers:
             if name.lower() in exclude_headers:
                 continue
@@ -326,6 +341,12 @@ class GraylogMiddleware:
                     "_elapsed_ms": round(elapsed * 1000),
                 }
             )
+        if getattr(settings, "GRAYLOG_USERNAME", False) and hasattr(request, "user"):
+            try:
+                if request.user.is_authenticated:
+                    record["_username"] = request.user.get_username()
+            except Exception:
+                pass
         if getattr(settings, "GRAYLOG_HEADERS", False):
             record.update(self.request_headers(request))
         if getattr(settings, "GRAYLOG_USER_AGENT", False) and has_ua_parser:
