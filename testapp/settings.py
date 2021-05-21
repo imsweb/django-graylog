@@ -1,8 +1,9 @@
+import secrets
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = "django-insecure--1a!($4azx&&-b+(%8p%=v0!=5b-6xj!x-*&1pm^or0gw+*ud9"
+SECRET_KEY = secrets.token_urlsafe()
 DEBUG = True
 ALLOWED_HOSTS = []
 
