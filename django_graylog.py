@@ -406,7 +406,7 @@ class GraylogMiddleware:
         if getattr(settings, "GRAYLOG_TIMING", True):
             record.update(
                 {
-                    "_elapsed": str(elapsed),
+                    "_elapsed": elapsed,
                     "_elapsed_ms": round(elapsed * 1000),
                 }
             )
