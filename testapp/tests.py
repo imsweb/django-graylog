@@ -1,9 +1,15 @@
+import unittest
+
+import django
 from django.test import Client, TestCase
+
+has_exception_flag = django.VERSION[0] > 2
 
 
 class GraylogMiddlewareTests(TestCase):
     def setUp(self):
-        self.client = Client(raise_request_exception=False)
+        if has_exception_flag:
+            self.client = Client(raise_request_exception=False)
 
     def test_basics(self):
         r = self.client.get("/simple/")
@@ -13,6 +19,7 @@ class GraylogMiddlewareTests(TestCase):
         self.assertEqual(r.gelf["_content_type"], "text/html")
         self.assertEqual(r.gelf["_content_length"], 13)
 
+    @unittest.skipUnless(has_exception_flag, "Django < 3.0 raises client exceptions.")
     def test_exception_message(self):
         r = self.client.get("/error/")
         errmsg = "An error occurred."
