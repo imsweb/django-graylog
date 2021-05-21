@@ -58,6 +58,10 @@ unless `GRAYLOG_ENDPOINT` is set (see below).
     - `{"path": [r"^/_"]}` - Skips logging of requests to paths starting with `_`.
     - `{"ip": "192\.168\."}` - Skips logging of requests from `192.168.*` addresses.
       Using a string instead of a list works for a single regular expression.
+* `GRAYLOG_EXCEPTION_MESSAGES` - Whether to include exception messages in data sent to
+  Graylog. Setting to `False` will strip the last line (the exception) from stack
+  traces (in case the line includes a literal message), and not send the
+  `_exception_message` field. Defaults to `True`.
 
 
 ## Advanced Usage

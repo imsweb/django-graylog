@@ -27,7 +27,7 @@ try:
 except ImportError:
     has_ua_parser = False
 
-__version__ = "0.6.0"
+__version__ = "0.7.0"
 __version_info__ = tuple(int(num) for num in __version__.split("."))
 
 
@@ -188,6 +188,15 @@ class TCPTransport:
             sock.sendall(payload)
 
 
+class TestTransport:
+    def __init__(self, endpoint):
+        self.attribute = urllib.parse.urlparse(endpoint).hostname
+        self.messages = []
+
+    def send(self, record):
+        self.messages.append(record)
+
+
 def compile_filters(filters):
     compiled = {}
     for name, regexes in filters.items():
@@ -213,6 +222,7 @@ class GraylogMiddleware:
         "https": RequestsTransport,
         "udp": UDPTransport,
         "tcp": TCPTransport,
+        "test": TestTransport,
     }
 
     def __init__(self, get_response):
@@ -239,18 +249,32 @@ class GraylogMiddleware:
         elapsed = time.time() - start
         try:
             record = self.make_record(request, response, elapsed)
-            if self.filter(record):
+            if self.filter(record, request, response):
                 self.transport.send(record)
+                if isinstance(self.transport, TestTransport):
+                    setattr(response, self.transport.attribute, record)
         except Exception:
             if getattr(settings, "DEBUG", False):
                 raise
         return response
 
     def process_exception(self, request, exception):
-        tb = "".join(traceback.format_tb(exception.__traceback__))
-        setattr(request, "_graylog_traceback", textwrap.dedent(tb))
+        # Always log the exception class if an exception occurs.
+        fields = {
+            "_exception_class": exception.__class__.__name__,
+        }
+        lines = traceback.format_tb(exception.__traceback__)
+        if getattr(settings, "GRAYLOG_EXCEPTION_MESSAGES", True):
+            # Split out the exception message into a separate field by default.
+            fields["_exception_message"] = str(exception)
+        else:
+            # If not logging exception messages, chop off the last line of the stack
+            # trace, and don't include the _exception_message field.
+            lines.pop()
+        fields["full_message"] = textwrap.dedent("".join(lines)).rstrip()
+        setattr(request, "_graylog_exception", fields)
 
-    def filter(self, record):
+    def filter(self, record, request, response):
         for field_name, regexes in self.filters.items():
             if field_name not in record:
                 continue
@@ -323,7 +347,6 @@ class GraylogMiddleware:
             "version": "1.1",
             "host": request.get_host(),
             "short_message": request.get_full_path(),
-            # "timestamp": time.time(),
             "level": getattr(settings, "GRAYLOG_LEVEL", Severity.INFO),
             "_facility": "django-graylog",
             "_node": getattr(settings, "GRAYLOG_NODE", socket.gethostname()),
@@ -332,8 +355,10 @@ class GraylogMiddleware:
             "_ip": get_ip(request),
             "_path": request.path,
         }
-        if hasattr(request, "_graylog_traceback"):
-            record["full_message"] = request._graylog_traceback
+        if getattr(settings, "GRAYLOG_INCLUDE_TIMESTAMP", True):
+            record["timestamp"] = time.time()
+        if hasattr(request, "_graylog_exception"):
+            record.update(request._graylog_exception)
         if getattr(settings, "GRAYLOG_TIMING", True):
             record.update(
                 {
