@@ -8,6 +8,10 @@ class GraylogMiddlewareTests(TestCase):
     def test_basics(self):
         r = self.client.get("/simple/")
         self.assertEqual(r.gelf["_status"], 200)
+        self.assertEqual(r.gelf["_method"], "GET")
+        self.assertEqual(r.gelf["_path"], "/simple/")
+        self.assertEqual(r.gelf["_content_type"], "text/html")
+        self.assertEqual(r.gelf["_content_length"], 13)
 
     def test_exception_message(self):
         r = self.client.get("/error/")

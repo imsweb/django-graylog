@@ -106,7 +106,8 @@ class GraylogRequestHandler(logging.Handler):
 
 
 class GraylogProxy:
-    def __init__(self):
+    def __init__(self, name=None):
+        self.default_name = name
         self.logs = []
         self.extra = getattr(settings, "GRAYLOG_FIELDS", {}).copy()
 
@@ -125,14 +126,14 @@ class GraylogProxy:
         self.extra[name] = value
 
     def log(self, level, message, *args, **kwargs):
-        default_name = getattr(settings, "GRAYLOG_FACILITY", "django-graylog")
-        self.logs.append(
-            {
-                "name": kwargs.get("_name", default_name),
-                "level": int(level),
-                "message": message.format(*args, **kwargs),
-            }
-        )
+        name = kwargs.get("_name", self.default_name)
+        entry = {
+            "level": int(level),
+            "message": message.format(*args, **kwargs),
+        }
+        if name:
+            entry["name"] = name
+        self.logs.append(entry)
 
     def debug(self, message, *args, **kwargs):
         self.log(Severity.DEBUG, message, *args, **kwargs)
@@ -262,6 +263,7 @@ class GraylogMiddleware:
     def __init__(self, get_response):
         self.endpoint = getattr(settings, "GRAYLOG_ENDPOINT", "")
         self.filters = compile_filters(getattr(settings, "GRAYLOG_FILTERS", {}))
+        self.facility = getattr(settings, "GRAYLOG_FACILITY", "django-graylog")
         if not self.endpoint:
             raise MiddlewareNotUsed()
         if getattr(settings, "GRAYLOG_USER_AGENT", False) and not has_ua_parser:
@@ -278,7 +280,7 @@ class GraylogMiddleware:
 
     def __call__(self, request):
         start = time.time()
-        setattr(request, "graylog", GraylogProxy())
+        setattr(request, "graylog", GraylogProxy(self.facility))
         token = current_request.set(request)
         response = self.get_response(request)
         elapsed = time.time() - start
@@ -385,15 +387,20 @@ class GraylogMiddleware:
             "host": request.get_host(),
             "short_message": request.get_full_path(),
             "level": getattr(settings, "GRAYLOG_LEVEL", Severity.INFO),
-            "_facility": getattr(settings, "GRAYLOG_FACILITY", "django-graylog"),
             "_node": getattr(settings, "GRAYLOG_NODE", socket.gethostname()),
             "_status": response.status_code,
             "_method": request.method,
-            "_ip": get_ip(request),
             "_path": request.path,
+            "_content_type": response.get("content-type", "").split(";")[0],
         }
-        if getattr(settings, "GRAYLOG_INCLUDE_TIMESTAMP", True):
+        if not response.streaming:
+            record["_content_length"] = len(response.content)
+        if self.facility:
+            record["_facility"] = self.facility
+        if getattr(settings, "GRAYLOG_TIMESTAMP", True):
             record["timestamp"] = time.time()
+        if getattr(settings, "GRAYLOG_IP", True):
+            record["_ip"] = get_ip(request)
         if hasattr(request, "_graylog_exception"):
             record.update(request._graylog_exception)
         if getattr(settings, "GRAYLOG_TIMING", True):

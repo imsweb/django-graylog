@@ -59,9 +59,15 @@ unless `GRAYLOG_ENDPOINT` is set (see below).
     - `{"ip": "192\.168\."}` - Skips logging of requests from `192.168.*` addresses.
       Using a string instead of a list works for a single regular expression.
 * `GRAYLOG_EXCEPTION_MESSAGES` - Whether to include exception messages in data sent to
-  Graylog. Setting to `False` will strip the last line (the exception) from stack
-  traces (in case the line includes a literal message), and not send the
-  `_exception_message` field. Defaults to `True`.
+  Graylog. Setting to `False` will strip the last line from stack traces (in case the
+  line includes a literal message), and not send the `_exception_message` field.
+  Defaults to `True`.
+* `GRAYLOG_FACILITY` - Sent as `_facility`, and used as the default logger name for
+  logging messages sent via `request.graylog`.
+* `GRAYLOG_TIMESTAMP` - Whether to include a `timestamp` field in data sent to Graylog.
+  Setting to `False` means Graylog will infer the current time when it receives log
+  entries. Defaults to `True`.
+* `GRAYLOG_IP` - Whether to include the IP address of requests. Defaults to `True`.
 
 
 ## Advanced Usage
@@ -76,3 +82,7 @@ def homepage(request):
     request.graylog["user"] = request.user.user_name
     request.graylog.info("Rendered homepage for {user}", user=request.user.user_name)
 ```
+
+If you want standard Python logging calls during a request to be logged into Graylog as
+well, `django_graylog` comes with a `GraylogRequestHandler` logging handler that tracks
+the current request and associates logging to it.
