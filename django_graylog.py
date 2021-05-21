@@ -1,6 +1,8 @@
+import contextvars
 import enum
 import gzip
 import json
+import logging
 import os
 import re
 import socket
@@ -31,6 +33,9 @@ __version__ = "0.7.0"
 __version_info__ = tuple(int(num) for num in __version__.split("."))
 
 
+current_request = contextvars.ContextVar("current_request")
+
+
 class Severity(enum.IntEnum):
     EMERGENCY = 0
     ALERT = 1
@@ -40,6 +45,10 @@ class Severity(enum.IntEnum):
     NOTICE = 5
     INFO = 6
     DEBUG = 7
+
+    @classmethod
+    def from_level(cls, level):
+        return getattr(cls, logging.getLevelName(level), cls.ALERT)
 
 
 IP_REGEX = re.compile(r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}")
@@ -81,6 +90,21 @@ def get_ip(request):
     return ip_address
 
 
+class GraylogRequestHandler(logging.Handler):
+    def emit(self, record):
+        try:
+            request = current_request.get()
+            if request and hasattr(request, "graylog"):
+                request.graylog.log(
+                    Severity.from_level(record.levelno),
+                    self.format(record),
+                    _name=record.name,
+                )
+        except LookupError:
+            # No current request, nothing for this handler to do.
+            pass
+
+
 class GraylogProxy:
     def __init__(self):
         self.logs = []
@@ -101,7 +125,14 @@ class GraylogProxy:
         self.extra[name] = value
 
     def log(self, level, message, *args, **kwargs):
-        self.logs.append({"message": message.format(*args, **kwargs), "level": level})
+        default_name = getattr(settings, "GRAYLOG_FACILITY", "django-graylog")
+        self.logs.append(
+            {
+                "name": kwargs.get("_name", default_name),
+                "level": int(level),
+                "message": message.format(*args, **kwargs),
+            }
+        )
 
     def debug(self, message, *args, **kwargs):
         self.log(Severity.DEBUG, message, *args, **kwargs)
@@ -114,6 +145,9 @@ class GraylogProxy:
 
     def error(self, message, *args, **kwargs):
         self.log(Severity.ERROR, message, *args, **kwargs)
+
+    def critical(self, message, *args, **kwargs):
+        self.log(Severity.CRITICAL, message, *args, **kwargs)
 
     def additional_fields(self):
         fields = {}
@@ -245,6 +279,7 @@ class GraylogMiddleware:
     def __call__(self, request):
         start = time.time()
         setattr(request, "graylog", GraylogProxy())
+        token = current_request.set(request)
         response = self.get_response(request)
         elapsed = time.time() - start
         try:
@@ -256,6 +291,8 @@ class GraylogMiddleware:
         except Exception:
             if getattr(settings, "DEBUG", False):
                 raise
+        finally:
+            current_request.reset(token)
         return response
 
     def process_exception(self, request, exception):
@@ -348,7 +385,7 @@ class GraylogMiddleware:
             "host": request.get_host(),
             "short_message": request.get_full_path(),
             "level": getattr(settings, "GRAYLOG_LEVEL", Severity.INFO),
-            "_facility": "django-graylog",
+            "_facility": getattr(settings, "GRAYLOG_FACILITY", "django-graylog"),
             "_node": getattr(settings, "GRAYLOG_NODE", socket.gethostname()),
             "_status": response.status_code,
             "_method": request.method,

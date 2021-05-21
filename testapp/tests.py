@@ -20,3 +20,21 @@ class GraylogMiddlewareTests(TestCase):
             self.assertEqual(r.gelf["_exception_class"], "ValueError")
             self.assertNotIn("_exception_message", r.gelf)
             self.assertNotIn(errmsg, r.gelf["full_message"].splitlines()[-1])
+
+    def test_logging_handler(self):
+        r = self.client.get("/log/")
+        self.assertEqual(
+            r.gelf["_logs"],
+            [
+                {
+                    "name": "django-graylog",
+                    "level": 6,
+                    "message": "This message was logged with GraylogProxy.",
+                },
+                {
+                    "name": "testapp.views",
+                    "level": 7,
+                    "message": "This message was logged with GraylogRequestHandler.",
+                },
+            ],
+        )

@@ -61,4 +61,18 @@ USE_I18N = True
 USE_L10N = True
 USE_TZ = True
 
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {
+        "graylog": {
+            "class": "django_graylog.GraylogRequestHandler",
+        },
+    },
+    "root": {
+        "handlers": ["graylog"],
+        "level": "DEBUG",
+    },
+}
+
 GRAYLOG_ENDPOINT = "test://gelf"
