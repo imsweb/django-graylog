@@ -1,7 +1,7 @@
 import unittest
 
 import django
-from django.test import Client, TestCase
+from django.test import Client, TestCase, override_settings
 
 has_exception_flag = django.VERSION[0] > 2
 
@@ -49,3 +49,17 @@ class GraylogMiddlewareTests(TestCase):
                 },
             ],
         )
+
+    @override_settings(GRAYLOG_FILTERS={"path": r"^/simp", "method": r"POST|PUT"})
+    def test_filters(self):
+        # Check that URLs starting with "/simp" are not logged.
+        r = self.client.get("/simple/")
+        self.assertFalse(hasattr(r, "gelf"))
+        # This one should be logged.
+        r = self.client.get("/redirect/")
+        self.assertEqual(r.gelf["_status"], 302)
+        # Check that POST and PUT requests are not logged.
+        r = self.client.post("/redirect/")
+        self.assertFalse(hasattr(r, "gelf"))
+        r = self.client.put("/redirect/")
+        self.assertFalse(hasattr(r, "gelf"))
