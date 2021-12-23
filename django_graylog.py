@@ -241,7 +241,7 @@ def compile_filters(filters):
             regexes = [regexes]
         patterns = []
         for regex in regexes:
-            if isinstance(regex, re.Pattern):
+            if hasattr(regex, "match") and callable(regex.match):
                 patterns.append(regex)
             elif isinstance(regex, str):
                 patterns.append(re.compile(regex))
