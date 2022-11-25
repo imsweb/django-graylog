@@ -68,6 +68,8 @@ unless `GRAYLOG_ENDPOINT` is set (see below).
   Setting to `False` means Graylog will infer the current time when it receives log
   entries. Defaults to `True`.
 * `GRAYLOG_IP` - Whether to include the IP address of requests. Defaults to `True`.
+* `GRAYLOG_LOG_REQUEST` - Logs the requested information as a dict under `request_content`
+* `GRAYLOG_LOG_RESPONSE` - Logs the response information as a dict under `response_content`
 
 
 ## Advanced Usage
