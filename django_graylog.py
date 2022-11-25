@@ -422,6 +422,10 @@ class GraylogMiddleware:
             record.update(self.parse_agent(request.headers.get("user-agent")))
         if getattr(settings, "GRAYLOG_REFERER", False):
             record.update(self.parse_referer(request.headers.get("referer")))
+        if getattr(settings, "GRAYLOG_LOG_REQUEST", False):
+            record["_request_content"] = request.POST.dict()
+        if getattr(settings, "GRAYLOG_LOG_RESPONSE", False):
+            record["_response_content"] = str(response.content)
         graylog = getattr(request, "graylog", None)
         if graylog:
             record.update(graylog.additional_fields())
