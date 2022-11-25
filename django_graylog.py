@@ -423,7 +423,11 @@ class GraylogMiddleware:
         if getattr(settings, "GRAYLOG_REFERER", False):
             record.update(self.parse_referer(request.headers.get("referer")))
         if getattr(settings, "GRAYLOG_LOG_REQUEST", False):
-            record["_request_content"] = request.POST.dict()
+            if(len(request.POST.dict())):
+                record["_request_content"] = request.POST.dict()
+            else:
+                #decode, sanitize
+                record["_request_content"] = request.body.decode().replace('\n','')
         if getattr(settings, "GRAYLOG_LOG_RESPONSE", False):
             record["_response_content"] = str(response.content)
         graylog = getattr(request, "graylog", None)
