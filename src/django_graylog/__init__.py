@@ -1,6 +1,8 @@
 import contextvars
 import enum
 import gzip
+import importlib.metadata
+import ipaddress
 import json
 import logging
 import os
@@ -11,8 +13,6 @@ import textwrap
 import time
 import traceback
 import urllib.parse
-import ipaddress
-import importlib.metadata
 
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured, MiddlewareNotUsed
