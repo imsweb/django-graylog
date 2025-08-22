@@ -11,6 +11,8 @@ import textwrap
 import time
 import traceback
 import urllib.parse
+import ipaddress
+import importlib.metadata
 
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured, MiddlewareNotUsed
@@ -29,8 +31,11 @@ try:
 except ImportError:
     has_ua_parser = False
 
-__version__ = "0.7.0"
-__version_info__ = tuple(int(num) for num in __version__.split("."))
+__version__ = importlib.metadata.version("django_graylog")
+__version_info__ = tuple(
+    int(num) if num.isdigit() else str(num)
+    for num in re.findall(r"([a-z]*\d+)", __version__)
+)
 
 
 current_request = contextvars.ContextVar("current_request")
@@ -50,8 +55,6 @@ class Severity(enum.IntEnum):
     def from_level(cls, level):
         return getattr(cls, logging.getLevelName(level), cls.ALERT)
 
-
-IP_REGEX = re.compile(r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}")
 
 GELF_FIELD_REGEX = re.compile(r"^[\w\.\-]+$")
 GELF_RESERVED_FIELDS = set(
@@ -85,9 +88,11 @@ def get_ip(request):
         ip_address = ip_address.split(",")[0].strip()
     if not ip_address:
         ip_address = request.META.get("REMOTE_ADDR", "127.0.0.1").strip()
-    if not IP_REGEX.match(ip_address):
-        ip_address = ""
-    return ip_address
+    try:
+        # Validate and normalize the IP address.
+        return str(ipaddress.ip_address(ip_address))
+    except ValueError:
+        return ""
 
 
 class GraylogRequestHandler(logging.Handler):

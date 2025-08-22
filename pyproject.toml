@@ -1,0 +1,37 @@
+[project]
+name = "django-graylog"
+version = "0.8.0"
+description = "Graylog middleware for Django."
+authors = [
+    { name = "Dan Watson", email = "watsond@imsweb.com" }
+]
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+classifiers=[
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Topic :: System :: Logging",
+    "Topic :: System :: Monitoring",
+]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/imsweb/django-graylog"
+
+[project.optional-dependencies]
+http = ["requests"]
+ua = ["ua-parser"]
+all = ["requests", "ua-parser"]
+
+[build-system]
+requires = ["uv_build>=0.8.3,<0.9.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "django>=5.2.5",
+]
