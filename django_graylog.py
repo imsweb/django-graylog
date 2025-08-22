@@ -12,6 +12,7 @@ import time
 import traceback
 import urllib.parse
 
+from ipaddress import ip_address
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured, MiddlewareNotUsed
 
@@ -51,8 +52,6 @@ class Severity(enum.IntEnum):
         return getattr(cls, logging.getLevelName(level), cls.ALERT)
 
 
-IP_REGEX = re.compile(r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}")
-
 GELF_FIELD_REGEX = re.compile(r"^[\w\.\-]+$")
 GELF_RESERVED_FIELDS = set(
     [
@@ -78,6 +77,23 @@ SENSITIVE_HEADERS = set(
     ]
 )
 
+def remove_zeros_from_ip(ip_adr):
+    """The ipaddress module in Python 3.9+ does not support addresses containing leading zeros, so strip them"""
+    return re.sub(r'(^|\.)0+(?=[^.])', r'\1', ip_adr)
+
+
+def validate_ip_address(address):
+    """Return True if the address given is a valid IPv4 or IPv6 address."""
+    # If we have a string with "." we assume this is IPv4
+    if isinstance(address, str) and '.' in address:
+        address = remove_zeros_from_ip(address)
+
+    try:
+        ip_address(address)
+        return True
+    except ValueError:
+        return False
+
 
 def get_ip(request):
     ip_address = request.META.get("HTTP_X_FORWARDED_FOR", "").strip()
@@ -85,7 +101,7 @@ def get_ip(request):
         ip_address = ip_address.split(",")[0].strip()
     if not ip_address:
         ip_address = request.META.get("REMOTE_ADDR", "127.0.0.1").strip()
-    if not IP_REGEX.match(ip_address):
+    if not validate_ip_address(ip_address):
         ip_address = ""
     return ip_address
 
