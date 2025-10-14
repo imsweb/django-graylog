@@ -31,10 +31,9 @@ try:
 except ImportError:
     has_ua_parser = False
 
-__version__ = importlib.metadata.version("django_graylog")
+__version__ = importlib.metadata.version("django-graylog")
 __version_info__ = tuple(
-    int(num) if num.isdigit() else str(num)
-    for num in re.findall(r"([a-z]*\d+)", __version__)
+    int(num) if num.isdigit() else num for num in __version__.split(".")
 )
 
 
