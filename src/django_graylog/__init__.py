@@ -222,9 +222,9 @@ class TCPTransport:
     def send(self, record):
         # Graylog over TCP does not support compression.
         payload = json.dumps(record).encode("utf-8")
-        # TODO: have an option to keep a socket open and reconnect as needed?
         with socket.create_connection(self.address, timeout=self.timeout) as sock:
             sock.sendall(payload)
+            sock.send('\0'.encode('utf-8'))
 
 
 class TestTransport:
