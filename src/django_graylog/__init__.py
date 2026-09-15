@@ -218,12 +218,21 @@ class TCPTransport:
         self.address = (parts.hostname, parts.port)
         self.timeout = float(getattr(settings, "GRAYLOG_TIMEOUT", 0.25))
         self.delim = bytes(getattr(settings, "GRAYLOG_TCP_DELIMITER", b"\x00"))
+        self.retries = getattr(settings, "GRAYLOG_TCP_CONN_RETRIES", 1)
+
+    def create_conn(self):
+        for attempt in range(1, self.retries + 1):
+            try:
+                # TODO: have an option to keep a socket open and reconnect as needed?
+                return socket.create_connection(self.address, timeout=self.timeout)
+            except Exception:
+                if attempt == self.retries:
+                    raise
 
     def send(self, record):
         # Graylog over TCP does not support compression.
         payload = json.dumps(record).encode("utf-8")
-        # TODO: have an option to keep a socket open and reconnect as needed?
-        with socket.create_connection(self.address, timeout=self.timeout) as sock:
+        with self.create_conn() as sock:
             sock.sendall(payload + self.delim)
 
 
