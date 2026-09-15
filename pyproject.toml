@@ -1,6 +1,6 @@
 [project]
 name = "django-graylog"
-version = "0.9.0.dev0"
+version = "0.9.0.dev1"
 description = "Graylog middleware for Django."
 authors = [
     { name = "Dan Watson", email = "watsond@imsweb.com" }
