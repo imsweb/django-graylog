@@ -56,29 +56,25 @@ class Severity(enum.IntEnum):
 
 
 GELF_FIELD_REGEX = re.compile(r"^[\w\.\-]+$")
-GELF_RESERVED_FIELDS = set(
-    [
-        "id",
-        "version",
-        "host",
-        "short_message",
-        "full_message",
-        "timestamp",
-        "level",
-        "facility",
-        "line",
-        "file",
-        "logs",
-    ]
-)
+GELF_RESERVED_FIELDS = {
+    "id",
+    "version",
+    "host",
+    "short_message",
+    "full_message",
+    "timestamp",
+    "level",
+    "facility",
+    "line",
+    "file",
+    "logs",
+}
 
-SENSITIVE_HEADERS = set(
-    [
-        "authorization",
-        "cookie",
-        "proxy-authorization",
-    ]
-)
+SENSITIVE_HEADERS = {
+    "authorization",
+    "cookie",
+    "proxy-authorization",
+}
 
 
 def get_ip(request):
@@ -118,15 +114,13 @@ class GraylogProxy:
     def __setitem__(self, name, value):
         if name.startswith("_"):
             raise KeyError(
-                "Invalid key ({}). Keys will automatically be prefixed with an "
-                "underscore.".format(name)
+                f"Invalid key ({name}). Keys will automatically be prefixed with an "
+                "underscore."
             )
         if not GELF_FIELD_REGEX.match(name):
-            raise KeyError(
-                "Invalid key ({}). Keys must match [\\w\\.\\-]+.".format(name)
-            )
+            raise KeyError(f"Invalid key ({name}). Keys must match [\\w\\.\\-]+.")
         if name in GELF_RESERVED_FIELDS:
-            raise KeyError("Invalid key ({}). This key name is reserved.".format(name))
+            raise KeyError(f"Invalid key ({name}). This key name is reserved.")
         self.extra[name] = value
 
     def log(self, level, message, *args, **kwargs):
@@ -284,7 +278,7 @@ class GraylogMiddleware:
 
     def __call__(self, request):
         start = time.time()
-        setattr(request, "graylog", GraylogProxy(self.facility))
+        request.graylog = GraylogProxy(self.facility)
         token = current_request.set(request)
         response = self.get_response(request)
         elapsed = time.time() - start
@@ -315,7 +309,7 @@ class GraylogMiddleware:
             # trace, and don't include the _exception_message field.
             lines.pop()
         fields["full_message"] = textwrap.dedent("".join(lines)).rstrip()
-        setattr(request, "_graylog_exception", fields)
+        request._graylog_exception = fields
 
     def filter(self, record, request, response):
         for field_name, regexes in self.filters.items():
@@ -364,10 +358,10 @@ class GraylogMiddleware:
     def request_headers(self, request):
         headers = {}
         include_headers = getattr(settings, "GRAYLOG_HEADERS", [])
-        exclude_headers = set(
+        exclude_headers = {
             name.lower()
             for name in getattr(settings, "GRAYLOG_EXCLUDE_HEADERS", SENSITIVE_HEADERS)
-        )
+        }
         if include_headers is True:
             # User-Agent and Referer are not included by default, since they will either
             # be in separate fields if requested via settings, or can be explicitly
